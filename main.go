@@ -1,14 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
-	"github.com/algorand/go-algorand-sdk/client/algod"
+	"github.com/algorand/go-algorand-sdk/client/v2/algod"
+	"github.com/algorand/go-algorand-sdk/crypto"
 )
 
 const (
-	algodAddress = "https://testnet-api.algonode.cloud"
+	algodAddress = "https://mainnet-api.algonode.cloud"
 	algodToken   = ""
 )
 
@@ -21,10 +23,25 @@ func main() {
 		return
 	}
 
-	block, err := algodClient.BlockRaw(123)
+	round := uint64(20998353)
+	block, err := algodClient.Block(round).Do(context.Background())
 	if err != nil {
 		log.Fatalf("Failed to get block: %+v", err)
 	}
 
-	log.Printf("%+v", block)
+	for _, txn := range block.Payset[10:11] {
+
+		txn.Txn.GenesisHash = block.GenesisHash
+		txn.Txn.GenesisID = block.GenesisID
+
+		id := crypto.GetTxID(txn.Txn)
+		proof, err := algodClient.GetProof(round, id).Do(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to get proof: %+v", err)
+		}
+
+		//log.Printf("%s => %+v", id, proof)
+		log.Printf("%+v", Verify(block.TxnRoot[:], proof.Stibhash, proof))
+	}
+
 }
