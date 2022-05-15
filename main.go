@@ -21,12 +21,9 @@ var (
 	algodAddress = "https://mainnet-api.algonode.cloud"
 	algodToken   = ""
 
-	// Hardcode for now
-	round = uint64(20998353)
-
-	merkleArraydomainSep = "MA"
-	merkleLeafDs         = "TL"
-	hashSize             = 32
+	merkleArrayDs = "MA"
+	merkleLeafDs  = "TL"
+	hashSize      = 32
 )
 
 type layerItem struct {
@@ -43,6 +40,9 @@ func main() {
 		return
 	}
 
+	// Hardcode for now
+	round := uint64(20998353)
+
 	// Fetch block
 	block, err := algodClient.Block(round).Do(context.Background())
 	if err != nil {
@@ -50,7 +50,7 @@ func main() {
 	}
 
 	// Iterate over payset
-	for idx, txn := range block.Payset[len(block.Payset)-10:] {
+	for _, txn := range block.Payset[len(block.Payset)-10:] {
 		// Get txid to get proof for
 		txid := GetTxIdString(txn, block.GenesisHash, block.GenesisID)
 		response, err := algodClient.GetProof(round, txid).Do(context.Background())
@@ -70,7 +70,7 @@ func main() {
 		}
 
 		// sweet
-		log.Printf("Verfied: %d", idx)
+		log.Printf("Verfied: %s", txid)
 	}
 }
 
@@ -107,6 +107,7 @@ func NextLayer(li layerItem, siblingHash []byte) layerItem {
 		left, right []byte
 	)
 
+	// Determine which side each hash belongs
 	if li.pos&1 == 0 {
 		left = li.hash
 		right = siblingHash
@@ -115,12 +116,15 @@ func NextLayer(li layerItem, siblingHash []byte) layerItem {
 		right = li.hash
 	}
 
+	// Move up one layer and compute new hash
 	return layerItem{
 		pos:  li.pos / 2,
 		hash: GetMerkleArrayHash(left, right),
 	}
 }
 
+// GetMerkleHash returns the hash that is used in the merkle tree base leaf
+// It is the combination of the TxId and the SignedTransactionInBlock hash
 func GetMerkleHash(txid []byte, proof models.ProofResponse) []byte {
 	//Domain separator length
 	dsLen := len(merkleLeafDs)
@@ -139,13 +143,15 @@ func GetMerkleHash(txid []byte, proof models.ProofResponse) []byte {
 	return nh.Sum(nil)
 }
 
+// GetMerkleArrayHash returns the has for a merkle tree layer
+// It is the combination of both left and right elements of a branch
 func GetMerkleArrayHash(left, right []byte) []byte {
 	// Domain Separator Length
-	dsLen := len(merkleArraydomainSep)
+	dsLen := len(merkleArrayDs)
 	// Buffer to hold stuff to hash
 	buf := make([]byte, dsLen+2*hashSize)
 	// Add domain sep
-	copy(buf[:], []byte(merkleArraydomainSep))
+	copy(buf[:], []byte(merkleArrayDs))
 	// Add left hash
 	copy(buf[dsLen:], left[:])
 	// Add right hash
