@@ -11,7 +11,6 @@ import (
 	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
 	"github.com/algorand/go-algorand-sdk/types"
 	gcrypto "github.com/algorand/go-algorand/crypto"
-	"github.com/algorand/go-algorand/crypto/merklearray"
 	"github.com/algorand/go-algorand/protocol"
 )
 
@@ -44,9 +43,8 @@ func main() {
 		}
 
 		proof := ResponseToProof(response)
-		log.Printf("%+v", proof)
-		idx := response.Idx
-		htxn := hashableTxn(txn)
+
+		log.Printf("Produced same hash?: %t", CheckHash(hashableTxn(txn), proof.HashFactory, response.Stibhash))
 
 		var stibhash gcrypto.Digest
 		copy(stibhash[:], response.Stibhash)
@@ -54,19 +52,20 @@ func main() {
 		var txidhash gcrypto.Digest
 		var txidbytes = GetTxIdBytes(txn, block.GenesisHash, block.GenesisID)
 		copy(txidhash[:], txidbytes[:])
+		merkleElem := &TxnMerkleElemRaw{Txn: txidhash, Stib: stibhash}
 
-		log.Printf("Produced same hash?: %t", CheckHash(htxn, proof.HashFactory, response.Stibhash))
-		err = merklearray.Verify(block.TxnRoot[:], map[uint64]gcrypto.Hashable{
-			idx: &TxnMerkleElemRaw{Txn: txidhash, Stib: stibhash},
-		}, &proof)
+		h := Hash(merkleElem, proof.HashFactory)
 
-		if err != nil {
-			log.Fatalf("Coundn't verify: %+v", err)
+		//if err = merklearray.Verify(block.TxnRoot[:], map[uint64]gcrypto.Hashable{response.Idx: merkleElem}, &proof); err != nil {
+		//	log.Fatalf("Coundn't verify: %+v", err)
+		//} else {
+		//	log.Printf("that worked?")
+		//}
+		if err = Verify(block.TxnRoot[:], h, response); err != nil {
+			log.Fatalf("Failzore: %+v", err)
 		}
-		log.Printf("that worked?")
+		log.Printf("That worked?")
 
-		//log.Printf("%s => %+v", id, proof)
-		//log.Printf("%+v", Verify(block.TxnRoot[:], proof.Stibhash, proof))
 	}
 }
 
@@ -81,12 +80,16 @@ func GetTxIdBytes(stib types.SignedTxnInBlock, gh types.Digest, gid string) []by
 	stib.Txn.GenesisID = gid
 	return crypto.TransactionID(stib.Txn)
 }
+func Hash(h gcrypto.Hashable, hf gcrypto.HashFactory) []byte {
+	nh := hf.NewHash()
+	prefix, b := h.ToBeHashed()
+	nh.Write(append([]byte(string(prefix))[:], b...))
+	return nh.Sum(nil)
+}
 
 func CheckHash(htxn gcrypto.Hashable, hf gcrypto.HashFactory, hash []byte) bool {
-	nh := hf.NewHash()
-	prefix, b := htxn.ToBeHashed()
-	nh.Write(append([]byte(string(prefix))[:], b...))
-	return bytes.Equal(nh.Sum(nil), hash)
+	htxnHash := Hash(htxn, hf)
+	return bytes.Equal(htxnHash, hash)
 }
 
 type stib struct {
