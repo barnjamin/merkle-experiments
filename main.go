@@ -61,7 +61,7 @@ func main() {
 		// Get the same txid but as bytes
 		tid := GetTxIdBytes(txn, block.GenesisHash, block.GenesisID)
 
-		// compute the hash for the merkle tree
+		// compute the hash for the txn in the merkle tree
 		merkleHash := GetMerkleHash(tid, response)
 
 		// Check that the path matches
