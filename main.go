@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha512"
+	"errors"
 	"fmt"
+	"hash"
 	"log"
 
 	"github.com/algorand/go-algorand-sdk/client/v2/algod"
@@ -11,13 +15,24 @@ import (
 	"github.com/algorand/go-algorand-sdk/types"
 )
 
-const (
+var (
+	ErrRootMismatch = errors.New("root Mismatch")
+
 	algodAddress = "https://mainnet-api.algonode.cloud"
 	algodToken   = ""
 
-	merkleLeafDs = "TL"
-	round        = uint64(20998353)
+	// Hardcode for now
+	round = uint64(20998353)
+
+	merkleArraydomainSep = "MA"
+	merkleLeafDs         = "TL"
+	hashSize             = 32
 )
+
+type layerItem struct {
+	pos  uint64
+	hash []byte
+}
 
 func main() {
 
@@ -59,6 +74,53 @@ func main() {
 	}
 }
 
+func NewHasher() hash.Hash {
+	//TODO: add more hashers
+	return sha512.New512_256()
+}
+
+func Verify(root []byte, hash []byte, proof models.ProofResponse) error {
+	layer := layerItem{hash: hash, pos: proof.Idx}
+
+	// Break up concat'd path
+	var path = make([][]byte, proof.Treedepth)
+	for x := 0; x < int(proof.Treedepth); x++ {
+		path[x] = proof.Proof[x*hashSize : (x+1)*hashSize]
+	}
+
+	// While we have elements in the path, do hash and move up tree
+	for len(path) > 0 {
+		layer = NextLayer(layer, path[0])
+		path = path[1:]
+	}
+
+	// Check that the pos is 0 and hash is equal to root
+	if layer.pos != 0 || !bytes.Equal(layer.hash, root) {
+		return ErrRootMismatch
+	}
+
+	return nil
+}
+
+func NextLayer(li layerItem, siblingHash []byte) layerItem {
+	var (
+		left, right []byte
+	)
+
+	if li.pos&1 == 0 {
+		left = li.hash
+		right = siblingHash
+	} else {
+		left = siblingHash
+		right = li.hash
+	}
+
+	return layerItem{
+		pos:  li.pos / 2,
+		hash: GetMerkleArrayHash(left, right),
+	}
+}
+
 func GetMerkleHash(txid []byte, proof models.ProofResponse) []byte {
 	//Domain separator length
 	dsLen := len(merkleLeafDs)
@@ -72,6 +134,24 @@ func GetMerkleHash(txid []byte, proof models.ProofResponse) []byte {
 	copy(buf[dsLen+32:], proof.Stibhash[:])
 
 	// Write out the hash
+	nh := NewHasher()
+	nh.Write(buf)
+	return nh.Sum(nil)
+}
+
+func GetMerkleArrayHash(left, right []byte) []byte {
+	// Domain Separator Length
+	dsLen := len(merkleArraydomainSep)
+	// Buffer to hold stuff to hash
+	buf := make([]byte, dsLen+2*hashSize)
+	// Add domain sep
+	copy(buf[:], []byte(merkleArraydomainSep))
+	// Add left hash
+	copy(buf[dsLen:], left[:])
+	// Add right hash
+	copy(buf[dsLen+len(left):], right[:])
+
+	// Hash'em
 	nh := NewHasher()
 	nh.Write(buf)
 	return nh.Sum(nil)
