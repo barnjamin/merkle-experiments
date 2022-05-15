@@ -5,11 +5,9 @@ import (
 	"crypto/sha512"
 	"errors"
 	"hash"
-	"log"
 
 	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
 	"github.com/algorand/go-algorand/crypto"
-	"github.com/algorand/go-algorand/crypto/merklearray"
 	"github.com/algorand/go-algorand/protocol"
 )
 
@@ -24,22 +22,6 @@ func NewHasher() hash.Hash {
 	return sha512.New512_256()
 }
 
-func ResponseToProof(response models.ProofResponse) merklearray.Proof {
-	var path = make([]crypto.GenericDigest, response.Treedepth)
-	for x := 0; x < int(response.Treedepth); x++ {
-		path[x] = response.Proof[x*hashSize : (x+1)*hashSize]
-	}
-
-	return merklearray.Proof{
-		Path: path,
-		HashFactory: crypto.HashFactory{
-			HashType: crypto.Sha512_256,
-		},
-		TreeDepth: uint8(response.Treedepth),
-	}
-
-}
-
 func Verify(root []byte, hash []byte, proof models.ProofResponse) error {
 	hasher := NewHasher()
 	pl := partialLayer{{hash: hash, pos: proof.Idx}}
@@ -51,10 +33,8 @@ func Verify(root []byte, hash []byte, proof models.ProofResponse) error {
 
 	s := &siblings{hints: hints}
 
-	log.Printf("%+v", pl)
 	var err error
 	for l := uint64(0); len(s.hints) > 0 || len(pl) > 1; l++ {
-		log.Printf("On Level: %+v %+v", l, pl)
 		if pl, err = pl.up(s, l, hasher); err != nil {
 			return err
 		}
@@ -120,8 +100,6 @@ func (pl partialLayer) up(s *siblings, l uint64, hsh hash.Hash) (partialLayer, e
 		if err != nil {
 			return nil, err
 		}
-
-		log.Printf("%+v %+v", l, siblingHash)
 
 		nextLayerPos := pos / 2
 		var nextLayerHash crypto.GenericDigest
