@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// Iterate over payset
-	for idx, txn := range block.Payset[:10] {
+	for idx, txn := range block.Payset[len(block.Payset)-10:] {
 		// Get txid to get proof for
 		txid := GetTxIdString(txn, block.GenesisHash, block.GenesisID)
 		response, err := algodClient.GetProof(round, txid).Do(context.Background())
