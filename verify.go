@@ -9,6 +9,7 @@ import (
 
 	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/crypto/merklearray"
 	"github.com/algorand/go-algorand/protocol"
 )
 
@@ -21,6 +22,22 @@ var (
 func NewHasher() hash.Hash {
 	//TODO: add more hashers
 	return sha512.New512_256()
+}
+
+func ResponseToProof(response models.ProofResponse) merklearray.Proof {
+	var path = make([]crypto.GenericDigest, response.Treedepth)
+	for x := 0; x < int(response.Treedepth); x++ {
+		path[x] = response.Proof[x*hashSize : (x+1)*hashSize]
+	}
+
+	return merklearray.Proof{
+		Path: path,
+		HashFactory: crypto.HashFactory{
+			HashType: crypto.Sha512_256,
+		},
+		TreeDepth: uint8(response.Treedepth),
+	}
+
 }
 
 func Verify(root []byte, hash []byte, proof models.ProofResponse) error {
